@@ -62,30 +62,39 @@ async def enhance_file(file_id: str):
 
 async def process_enhancement(file_id: str, input_path: Path, output_path: Path):
     try:
+        print(f"Starting enhancement for {file_id}")
         processing_status[file_id] = {"progress": 10, "status": "Analyzing media..."}
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
         
-        processing_status[file_id] = {"progress": 20, "status": "Loading AI models..."}
-        await asyncio.sleep(0.5)
+        processing_status[file_id] = {"progress": 30, "status": "Applying AI enhancement..."}
+        print(f"Calling enhance function for {file_id}")
+        print(f"Current status before enhancement: {processing_status[file_id]}")
         
         def update_progress(progress):
-            # Map video frame progress to overall progress (20-90%)
-            overall_progress = 20 + int(progress * 0.7)
+            overall_progress = 30 + int(progress * 0.6)
             processing_status[file_id] = {"progress": overall_progress, "status": "Applying AI enhancement..."}
         
         # Determine file type and enhance
         success = False
         if input_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-            success = enhance_image(str(input_path), str(output_path))
+            success = await asyncio.to_thread(enhance_image, str(input_path), str(output_path))
+            print(f"Image enhancement result for {file_id}: {success}")
         else:
-            success = enhance_video(str(input_path), str(output_path), update_progress)
+            success = await asyncio.to_thread(enhance_video, str(input_path), str(output_path), update_progress)
+            print(f"Video enhancement result for {file_id}: {success}")
         
         if success:
+            print(f"Enhancement complete for {file_id}")
             processing_status[file_id] = {"progress": 100, "status": "Enhancement complete!"}
+            print(f"Status updated to: {processing_status[file_id]}")
         else:
+            print(f"Enhancement failed for {file_id}")
             processing_status[file_id] = {"progress": 0, "status": "Enhancement failed"}
         
     except Exception as e:
+        print(f"Enhancement error for {file_id}: {e}")
+        import traceback
+        traceback.print_exc()
         processing_status[file_id] = {"progress": 0, "status": f"Error: {str(e)}"}
 
 @app.get("/status/{file_id}")

@@ -17,11 +17,15 @@ export default function Home() {
     setEnhancedUrl('')
     setProgress(0)
     setStatus('File selected - Ready to enhance')
+    setIsProcessing(false)
   }
 
   const enhanceWithBackend = async () => {
     if (!selectedFile) return
     
+    console.log('Starting enhancement process...')
+    // Clear previous enhanced image
+    setEnhancedUrl('')
     setIsProcessing(true)
     setStatus('Uploading file...')
     setProgress(0)
@@ -31,32 +35,69 @@ export default function Home() {
       const formData = new FormData()
       formData.append('file', selectedFile)
       
-      const uploadResponse = await fetch('http://localhost:8000/upload', {
+      console.log('Uploading file...')
+      const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
         body: formData
       })
       
       if (!uploadResponse.ok) throw new Error('Upload failed')
       const { file_id } = await uploadResponse.json()
+      console.log('File uploaded, ID:', file_id)
       
       // Start enhancement
-      await fetch(`http://localhost:8000/enhance/${file_id}`, {
+      console.log('Starting enhancement...')
+      const enhanceResponse = await fetch(`/api/enhance/${file_id}`, {
         method: 'POST'
       })
+      console.log('Enhancement started:', enhanceResponse.ok)
+      
+      // Wait for enhancement to actually start processing
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
       // Poll for progress
+      let pollCount = 0
+      const maxPolls = 60 // Max 60 seconds
+      
       const pollProgress = async () => {
-        const statusResponse = await fetch(`http://localhost:8000/status/${file_id}`)
-        const statusData = await statusResponse.json()
-        
-        setProgress(statusData.progress)
-        setStatus(statusData.status)
-        
-        if (statusData.progress < 100) {
-          setTimeout(pollProgress, 1000)
-        } else {
-          // Download enhanced file
-          setEnhancedUrl(`http://localhost:8000/download/${file_id}`)
+        try {
+          pollCount++
+          console.log(`Polling attempt ${pollCount}/${maxPolls}`)
+          
+          if (pollCount > maxPolls) {
+            console.log('Timeout reached')
+            setStatus('Enhancement timeout')
+            setIsProcessing(false)
+            return
+          }
+
+          const statusResponse = await fetch(`/api/status/${file_id}`)
+          if (!statusResponse.ok) {
+            throw new Error('Status check failed')
+          }
+          
+          const statusData = await statusResponse.json()
+          console.log('Status data:', statusData)
+          
+          setProgress(statusData.progress)
+          setStatus(statusData.status)
+          
+          if (statusData.progress >= 100) {
+            // Download enhanced file with cache-busting timestamp
+            const enhancedImageUrl = `/api/download/${file_id}?t=${Date.now()}`
+            console.log('Enhancement complete! Setting URL:', enhancedImageUrl)
+            setEnhancedUrl(enhancedImageUrl)
+            setIsProcessing(false)
+          } else if (statusData.progress === 0 && statusData.status.includes('failed')) {
+            console.log('Enhancement failed')
+            setIsProcessing(false)
+          } else {
+            console.log('Continuing to poll...')
+            setTimeout(pollProgress, 1000)
+          }
+        } catch (error) {
+          console.error('Polling error:', error)
+          setStatus('Status check failed')
           setIsProcessing(false)
         }
       }
@@ -74,6 +115,14 @@ export default function Home() {
     if (selectedFile) {
       enhanceWithBackend()
     }
+  }
+
+  const handleReset = () => {
+    setSelectedFile(null)
+    setEnhancedUrl('')
+    setProgress(0)
+    setStatus('Ready to enhance')
+    setIsProcessing(false)
   }
 
   return (
@@ -110,13 +159,25 @@ export default function Home() {
             />
           )}
 
-          <button 
-            className="enhance-btn"
-            onClick={handleEnhance}
-            disabled={isProcessing}
-          >
-            {isProcessing ? 'Enhancing...' : 'Enhance with AI'}
-          </button>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button 
+              className="enhance-btn"
+              onClick={handleEnhance}
+              disabled={isProcessing}
+            >
+              {isProcessing ? 'Enhancing...' : 'Enhance with AI'}
+            </button>
+            
+            {(enhancedUrl || !isProcessing) && (
+              <button 
+                className="enhance-btn"
+                onClick={handleReset}
+                style={{ backgroundColor: '#6b7280' }}
+              >
+                Start Fresh
+              </button>
+            )}
+          </div>
         </>
       )}
     </div>
